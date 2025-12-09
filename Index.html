@@ -2,484 +2,51 @@
 <html lang="bg">
 <head>
 <meta charset="UTF-8">
-<title>ULTIMATE SPLIT-SCREEN RACING</title>
+<title>SPLIT-SCREEN RACING</title>
 <style>
-    #startBtn {
-        position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 9999;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        color: #0f0; cursor: pointer; transition: opacity 1s;
+    body,html{margin:0;height:100%;overflow:hidden;background:#000;font-family:Arial}
+    #menu{position:fixed;inset:0;background:#000;color:#0f0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:999}
+    #menu h1{font-size:80px;margin:0;text-shadow:0 0 40px #0f0}
+    #menu p{font-size:40px;margin:40px 0}
+    #menu button{
+        margin-top:50px;padding:30px 100px;font-size:60px;
+        background:#000;color:#0f0;border:6px solid #0f0;
+        border-radius:30px;box-shadow:0 0 60px #0f0;cursor:pointer;
     }
-    #startBtn h1 { font-size: 70px; margin:0; text-shadow: 0 0 30px #0f0; }
-    #startBtn p { font-size: 40px; margin: 30px 0; color: #fff; }
-    #startBtn button {
-        padding: 25px 80px; font-size: 50px; background: #000; color: #0f0;
-        border: 4px solid #0f0; border-radius: 20px; cursor: pointer;
-        box-shadow: 0 0 40px #0f0; transition: 0.3s;
+    #menu button:hover{
+        background:#0f0;color:#000;transform:scale(1.1);
     }
-    #startBtn button:hover { background: #0f0; color: #000; transform: scale(1.1); }
-    #startBtn.fade { opacity: 0; }
-
-    #hud { position:absolute; top:20px; left:20px; color:#0f0; font:bold 36px 'Courier New'; text-shadow:0 0 20px #0f0; z-index:100; pointer-events:none; opacity:0; transition:1s; }
-    #hud.show { opacity:1; }
-    #timer { position:absolute; top:20px; right:20px; color:#0f0; font:bold 36px 'Courier New'; text-shadow:0 0 20px #0f0; z-index:100; opacity:0; transition:1s; }
-    #timer.show { opacity:1; }
-    #divider { position:absolute; left:0; top:50%; width:100%; height:12px; background:#0f0; box-shadow:0 0 40px #0f0; transform:translateY(-50%); z-index:99; opacity:0; transition:1s; }
-    #divider.show { opacity:1; }
 </style>
 </head>
 <body>
 
-<!-- СТАРТОВ ЕКРАН -->
-<div id="startBtn">
-    <h1>SPLIT-SCREEN RACING</h1>
+<div id="menu">
+    <h1>SPLIT-SCREEN<br>RACING</h1>
     <p>WASD vs Стрелки</p>
-    <button id="play">СТАРТ ИГРАТА</button>
+    <button onclick="startGame()">СТАРТ</button>
 </div>
 
-<!-- ИГРОВИ ЕЛЕМЕНТИ (скрити до старт) -->
-<div id="hud">
-    <div>P1: <span id="s1">0</span> km/h</div>
-    <div>P2: <span id="s2">0</span> km/h</div>
-</div>
-<div id="timer">00:00.00</div>
-<div id="divider"></div>
-<canvas id="c"></canvas>
+<!-- Зареждаме Three.js от CDN -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.min.js"></script>
 
-<script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.159.0/build/three.module.js';
-import {RGBELoader} from 'https://cdn.jsdelivr.net/npm/three@0.159.0/examples/jsm/loaders/RGBELoader.js';
+<script>
+function startGame() {
+    document.getElementById('menu').remove(); // махаме менюто
 
-const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
-renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(devicePixelRatio);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Създаваме canvas и HUD
+    document.body.innerHTML = `
+        <canvas id="c"></canvas>
+        <div id="hud">P1: <span id="s1">0</span> km/h<br>P2: <span id="s2">0</span> km/h</div>
+        <div id="timer">00:00.00</div>
+        <div id="divider"></div>
+    `;
 
-const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x87ceeb, 0.0003);
-
-// HDRI за реалистично небе и отражения
-new RGBELoader()
-  .setPath('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/assets/hdri/')
-  .load('venice_sunset_1k.hdr', tex => {
-    tex.mapping = THREE.EquirectangularReflectionMapping;
-    scene.environment = tex;
-    scene.background = tex;
-  });
-
-// Светлини
-const sun = new THREE.DirectionalLight(0xffffff, 3);
-sun.position.set(100, 150, 100);
-sun.castShadow = true;
-sun.shadow.mapSize.width = sun.shadow.mapSize.height = 2048;
-sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far = 500;
-scene.add(sun);
-scene.add(new THREE.AmbientLight(0x404040, 0.6));
-
-// БЕЗКРАЕН ПЪТ С ЛИНИИ
-const roadGroup = new THREE.Group();
-scene.add(roadGroup);
-const SEG = 40, COUNT = 150;
-const roadMeshes = [];
-const roadMat = new THREE.MeshStandardMaterial({color: 0x333333, roughness: 0.8});
-
-for(let i = 0; i < COUNT; i++) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(32, SEG), roadMat);
-    m.rotation.x = -Math.PI / 2;
-    m.position.z = i * SEG;
-    m.receiveShadow = true;
-    roadGroup.add(m);
-    roadMeshes.push(m);
+    // Сега зареждаме играта
+    const script = document.createElement('script');
+    script.src = 'game.js';
+    document.body.appendChild(script);
 }
-
-// Бели линии на пътя (каждите 3 сегмента)
-const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
-for(let i = 0; i < COUNT; i += 3) {
-    const line = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 20), lineMat);
-    line.rotation.x = -Math.PI / 2;
-    line.position.set(0, 0.01, i * SEG + SEG / 2);
-    roadGroup.add(line);
-}
-
-// РЕАЛИСТИЧНИ КОЛИ
-function createCar(color) {
-    const g = new THREE.Group();
-    
-    // Корпус
-    const bodyMat = new THREE.MeshPhysicalMaterial({ 
-        color, 
-        roughness: 0.1, 
-        metalness: 0.9, 
-        clearcoat: 1.0, 
-        clearcoatRoughness: 0.1 
-    });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 7), bodyMat);
-    body.position.y = 1.4;
-    body.castShadow = true;
-    g.add(body);
-    
-    // Покрив
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.2, 4), bodyMat);
-    roof.position.y = 2.4;
-    g.add(roof);
-    
-    // Колела (въртят се!)
-    const wheels = [];
-    const wheelGeo = new THREE.CylinderGeometry(0.75, 0.75, 0.45, 16);
-    const wheelMat = new THREE.MeshPhysicalMaterial({ color: 0x111111, roughness: 0.8, metalness: 0.9 });
-    [[-1.5, 2.6], [1.5, 2.6], [-1.5, -2.6], [1.5, -2.6]].forEach(([x, z]) => {
-        const w = new THREE.Mesh(wheelGeo, wheelMat);
-        w.rotation.z = Math.PI / 2;
-        w.position.set(x, 0.85, z);
-        w.castShadow = true;
-        g.add(w);
-        wheels.push(w);
-    });
-    
-    g.userData = { wheels };
-    return g;
-}
-
-const car1 = createCar(0xe74c3c); // Червена
-const car2 = createCar(0x3498db); // Синя
-scene.add(car1, car2);
-
-const p1 = { x: -6, speed: 0, z: 0, nitro: 100 };
-const p2 = { x: 6, speed: 0, z: 0, nitro: 100 };
-
-const cam1 = new THREE.PerspectiveCamera(75, 2, 0.1, 5000);
-const cam2 = new THREE.PerspectiveCamera(75, 2, 0.1, 5000);
-
-const keys = {};
-let started = false;
-let startTime = 0;
-
-// **СТАРТ С БУТОНА - ПРЕХОД КЪМ ИГРОВАТА СЦЕНА**
-const startBtn = document.getElementById('startBtn');
-const playBtn = document.getElementById('play');
-playBtn.onclick = () => {
-    startBtn.classList.add('fade');
-    setTimeout(() => {
-        startBtn.style.display = 'none';
-        document.getElementById('hud').classList.add('show');
-        document.getElementById('timer').classList.add('show');
-        document.getElementById('divider').classList.add('show');
-        started = true;
-        startTime = performance.now();
-    }, 1000);
-};
-
-// КОНТРОЛИ
-addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-// ТАЙМЕР
-setInterval(() => {
-    if (!started) return;
-    const elapsed = (performance.now() - startTime) / 1000;
-    const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
-    const secs = (elapsed % 60).toFixed(2).padStart(5, '0');
-    document.getElementById('timer').textContent = `${mins}:${secs}`;
-}, 50);
-
-// **ГЛАВЕН ИГРОВ ЛУП - САМО ТУК СЕ КАРА!**
-function loop() {
-    requestAnimationFrame(loop);
-
-    if (!started) return;
-
-    // ФИЗИКА P1 (WASD + SHIFT за нитро)
-    if (keys['a']) p1.x = Math.max(p1.x - 0.5, -15);
-    if (keys['d']) p1.x = Math.min(p1.x + 0.5, 15);
-    if (keys['w']) p1.speed = Math.min(p1.speed + 2.5, 500);
-    if (keys['s']) p1.speed *= 0.85;
-    if (keys['shift'] && p1.nitro > 0) {
-        p1.speed += 12;
-        p1.nitro -= 1.5;
-    }
-    p1.speed *= 0.97;
-    p1.nitro = Math.min(100, p1.nitro + 0.2);
-    p1.z += p1.speed * 0.12;
-
-    // ФИЗИКА P2 (стрелки + Enter за нитро)
-    if (keys['arrowleft']) p2.x = Math.max(p2.x - 0.5, -15);
-    if (keys['arrowright']) p2.x = Math.min(p2.x + 0.5, 15);
-    if (keys['arrowup']) p2.speed = Math.min(p2.speed + 2.5, 500);
-    if (keys['arrowdown']) p2.speed *= 0.85;
-    if (keys['enter'] && p2.nitro > 0) {
-        p2.speed += 12;
-        p2.nitro -= 1.5;
-    }
-    p2.speed *= 0.97;
-    p2.nitro = Math.min(100, p2.nitro + 0.2);
-    p2.z += p2.speed * 0.12;
-
-    // ХЪЛМОВЕ
-    const hill = z => Math.sin(z * 0.005) * 6 + Math.sin(z * 0.02) * 1.5;
-    car1.position.set(p1.x, 1 + hill(p1.z), -p1.z);
-    car2.position.set(p2.x, 1 + hill(p2.z), -p2.z);
-    car1.rotation.z = (p1.x * 0.02);
-    car2.rotation.z = (p2.x * 0.02);
-
-    // ВЪРТЕНЕ НА КОЛЕЛА
-    car1.userData.wheels.forEach(w => w.rotation.x += p1.speed / 40);
-    car2.userData.wheels.forEach(w => w.rotation.x += p2.speed / 40);
-
-    // БЕЗКРАЕН ПЪТ
-    const avgZ = (p1.z + p2.z) / 2;
-    roadGroup.position.z = -avgZ % SEG;
-    roadMeshes.forEach((m, i) => {
-        m.position.y = hill(roadGroup.position.z + i * SEG);
-    });
-
-    // КАМЕРИ (динамични)
-    const dist = 55 + Math.min(p1.speed, 300) * 0.08;
-    cam1.position.set(
-        car1.position.x * 0.4 + p1.x * 0.6,
-        15 + hill(p1.z),
-        car1.position.z + dist
-    );
-    cam1.lookAt(car1.position.x, 2, car1.position.z - dist * 0.8);
-
-    cam2.position.set(
-        car2.position.x * 0.4 + p2.x * 0.6,
-        15 + hill(p2.z),
-        car2.position.z + dist
-    );
-    cam2.lookAt(car2.position.x, 2, car2.position.z - dist * 0.8);
-
-    // HUD
-    document.getElementById('s1').textContent = Math.floor(p1.speed);
-    document.getElementById('s2').textContent = Math.floor(p2.speed);
-
-    // SPLIT-SCREEN
-    const h = innerHeight / 2;
-    renderer.setScissorTest(true);
-    renderer.setViewport(0, h, innerWidth, h);
-    renderer.setScissor(0, h, innerWidth, h);
-    renderer.render(scene, cam1);
-    renderer.setViewport(0, 0, innerWidth, h);
-    renderer.setScissor(0, 0, innerWidth, h);
-    renderer.render(scene, cam2);
-}
-
-loop();
-
-// RESIZE
-addEventListener('resize', () => {
-    renderer.setSize(innerWidth, innerHeight);
-    const h = innerHeight / 2;
-    cam1.aspect = innerWidth / h;
-    cam2.aspect = innerWidth / h;
-    cam1.updateProjectionMatrix();
-    cam2.updateProjectionMatrix();
-});
 </script>
+
 </body>
-
 </html>
-// === Setup ===
-const canvas = document.getElementById("gameCanvas");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-
-// === Light ===
-const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-dirLight.position.set(10, 20, 10);
-scene.add(dirLight);
-
-const ambLight = new THREE.AmbientLight(0xffffff, 0.4);
-scene.add(ambLight);
-
-// === Road ===
-const laneWidth = 3;
-const roadTexture = new THREE.TextureLoader().load("./road_texture.jpg");
-roadTexture.wrapS = THREE.RepeatWrapping;
-roadTexture.wrapT = THREE.RepeatWrapping;
-roadTexture.repeat.set(1, 200);
-
-const road = new THREE.Mesh(
-    new THREE.PlaneGeometry(30, 2000),
-    new THREE.MeshPhongMaterial({ map: roadTexture })
-);
-road.rotation.x = -Math.PI/2;
-scene.add(road);
-
-// === Load Cars ===
-let car1, car2;
-const loader = new THREE.GLTFLoader();
-
-loader.load("./red_car.glb", gltf => {
-    car1 = gltf.scene;
-    car1.scale.set(1.2, 1.2, 1.2);
-    car1.position.set(0, 0.6, 0);
-    car1.speed = 0;
-    car1.lane = 0;
-    scene.add(car1);
-});
-
-loader.load("./blue_car.glb", gltf => {
-    car2 = gltf.scene;
-    car2.scale.set(1.2, 1.2, 1.2);
-    car2.position.set(0, 0.6, 5);
-    car2.speed = 0;
-    car2.lane = 0;
-    scene.add(car2);
-});
-
-// === NPC Pool ===
-const npcCars = [];
-const npcCount = 12;
-const npcPool = [];
-
-function createNPC() {
-    const npc = new THREE.Mesh(
-        new THREE.BoxGeometry(1.2, 1, 2.4),
-        new THREE.MeshPhongMaterial({ color: 0x888888 })
-    );
-    npc.lane = Math.floor(Math.random() * 3) - 1;
-    npc.targetLane = npc.lane;
-    npc.position.x = npc.lane * laneWidth;
-    npc.position.y = 0.6;
-    npc.position.z = -Math.random()*200 - 40;
-    npc.speed = 0.4 + Math.random()*0.6;
-    npc.active = true;
-    scene.add(npc);
-    return npc;
-}
-
-function getNPC() {
-    let npc = npcPool.find(n => !n.active);
-    if (npc) { npc.active = true; return npc; }
-    npc = createNPC();
-    npcPool.push(npc);
-    return npc;
-}
-
-function resetNPC(npc) {
-    npc.position.z = -200 - Math.random()*200;
-    npc.lane = Math.floor(Math.random() * 3) -1;
-    npc.targetLane = npc.lane;
-    npc.position.x = npc.lane * laneWidth;
-    npc.speed = 0.4 + Math.random()*0.6;
-    npc.active = false;
-}
-
-for (let i=0;i<npcCount;i++) npcCars.push(getNPC());
-
-// === Cameras ===
-const camera1 = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-const camera2 = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-
-function updateCamera(camera, car){
-    if(!car) return;
-    const targetPos = new THREE.Vector3(car.position.x, 4, car.position.z + 6);
-    camera.position.lerp(targetPos,0.1);
-    const shake = car.speed * 0.002;
-    camera.position.x += (Math.random()-0.5)*shake;
-    camera.position.y += (Math.random()-0.5)*shake;
-    camera.lookAt(car.position);
-}
-
-// === Controls ===
-let keys = {};
-document.addEventListener("keydown", e => keys[e.key] = true);
-document.addEventListener("keyup", e => keys[e.key] = false);
-
-const controls1 = { left: "a", right: "d", forward: "w" };
-const controls2 = { left: "ArrowLeft", right: "ArrowRight", forward: "ArrowUp" };
-
-// === NPC Update ===
-function updateNPC(){
-    npcCars.forEach(npc=>{
-        if(!npc.active) return;
-        npc.position.z += npc.speed * 2;
-        if(Math.random() < 0.002){
-            let newLane = Math.floor(Math.random()*3)-1;
-            let blocked = npcCars.some(other=>other!==npc && other.lane===newLane && Math.abs(other.position.z - npc.position.z)<4);
-            if(!blocked) npc.targetLane=newLane;
-        }
-        npc.position.x += (npc.targetLane*laneWidth - npc.position.x)*0.1;
-        if(npc.position.z>50) resetNPC(npc);
-    });
-}
-
-// === Crash Detection ===
-function detectCrash(car){
-    if(!car) return;
-    for(let npc of npcCars){
-        const dz = Math.abs(car.position.z - npc.position.z);
-        const dx = Math.abs(car.position.x - npc.position.x);
-        if(dz<2.5 && dx<1.5){
-            car.crashed = true;
-            car.speed *=0.2;
-            car.position.x += (car.position.x - npc.position.x)*0.1;
-            car.rotation.z = (car.position.x - npc.position.x)*-0.2;
-        }
-    }
-    if(!car.crashed) car.rotation.z *=0.9;
-    else{ car.speed *=0.95; if(car.speed<0.5) car.crashed=false; }
-}
-
-// === Car Physics (Player1 & Player2) ===
-function updateCarPhysics(car, controls){
-    if(!car) return;
-    const accel = 0.15, brake=0.25, maxSpeed=220, laneSmooth=0.16, steerStrength=0.035, steerReturn=0.12;
-    if(!car.steerAngle) car.steerAngle=0;
-    if(!car.targetSteer) car.targetSteer=0;
-
-    if(keys[controls.forward]) car.speed += accel;
-    else car.speed*=0.985;
-    if(keys["s"] || keys["ArrowDown"]) car.speed -= brake;
-    car.speed = Math.max(0, Math.min(car.speed,maxSpeed));
-
-    if(keys[controls.left]){ car.lane = Math.max(-1, car.lane-1); car.targetSteer=-0.6; }
-    if(keys[controls.right]){ car.lane = Math.min(1, car.lane+1); car.targetSteer=0.6; }
-    if(!keys[controls.left] && !keys[controls.right]) car.targetSteer=0;
-
-    car.steerAngle += (car.targetSteer - car.steerAngle)*steerReturn;
-    car.rotation.y = car.steerAngle*steerStrength*(car.speed/maxSpeed*2);
-    car.rotation.z = -car.steerAngle*0.3;
-
-    car.position.z -= car.speed*0.05;
-    car.position.x += (car.lane*laneWidth - car.position.x)*laneSmooth;
-
-    detectCrash(car);
-}
-
-// === Animate ===
-function animate(){
-    requestAnimationFrame(animate);
-    if(car1) updateCarPhysics(car1, controls1);
-    if(car2) updateCarPhysics(car2, controls2);
-    updateNPC();
-    updateCamera(camera1, car1);
-    updateCamera(camera2, car2);
-
-    const w = window.innerWidth, h = window.innerHeight;
-    renderer.setScissorTest(true);
-
-    // Top screen – Player1
-    renderer.setViewport(0, h/2, w, h/2);
-    renderer.setScissor(0, h/2, w, h/2);
-    renderer.render(scene, camera1);
-
-    // Bottom screen – Player2
-    renderer.setViewport(0, 0, w, h/2);
-    renderer.setScissor(0, 0, w, h/2);
-    renderer.render(scene, camera2);
-}
-
-animate();
-
-window.addEventListener("resize", ()=>{
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});

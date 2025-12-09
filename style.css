@@ -1,0 +1,12 @@
+body, html { margin:0; height:100%; overflow:hidden; background:#000; font-family: 'Courier New'; color:#0f0; }
+#menu { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; background:radial-gradient(#001122,#000); }
+#menu h1 { font-size:80px; margin:0; text-shadow:0 0 40px #0f0; }
+#menu p { font-size:30px; margin:40px; }
+#menu button { padding:25px 100px; font-size:50px; background:#000; border:4px solid #0f0; border-radius:20px; box-shadow:0 0 50px #0f0; cursor:pointer; }
+#menu button:hover { background:#0f0; color:#000; }
+
+#hud { position:absolute; top:20px; left:20px; font:bold 36px 'Courier New'; text-shadow:0 0 20px #0f0; z-index:100; }
+#timer { position:absolute; top:20px; right:20px; font:bold 36px 'Courier New'; text-shadow:0 0 20px #0f0; z-index:100; }
+#divider { position:absolute; left:0; top:50%; width:100%; height:10px; background:#0f0; box-shadow:0 0 40px #0f0; transform:translateY(-50%); z-index:99; }
+#backBtn { position:absolute; bottom:20px; left:20px; padding:15px 30px; background:#000; border:2px solid #0f0; cursor:pointer; z-index:100; }
+#backBtn:hover { background:#0f0; color:#000; }
